@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🔬 Researcher Data Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:#F0F2F5;min-height:100vh;padding:24px}
+.c{max-width:900px;margin:0 auto}
+.card{background:#fff;border-radius:16px;padding:24px;margin-bottom:16px;box-shadow:0 2px 12px rgba(0,0,0,0.06)}
+h1{font-size:22px;font-weight:700;margin-bottom:8px}
+h2{font-size:16px;font-weight:700;margin-bottom:12px;color:#333}
+p{font-size:13px;color:#6B7280;line-height:1.6}
+.btn{display:inline-block;padding:12px 24px;border-radius:8px;border:none;font-size:14px;font-weight:700;cursor:pointer;margin-right:8px;margin-top:8px}
+.b1{background:#3B82F6;color:#fff}.b2{background:#10B981;color:#fff}.b3{background:#DC2626;color:#fff}.b4{background:#F59E0B;color:#fff}
+.btn:hover{opacity:0.9}
+table{width:100%;border-collapse:collapse;font-size:11px;margin-top:12px}
+th,td{padding:6px 8px;text-align:left;border-bottom:1px solid #F3F4F6}
+th{background:#F9FAFB;font-weight:600;color:#374151;position:sticky;top:0}
+.st{display:inline-block;background:#EFF6FF;padding:6px 14px;border-radius:8px;font-size:13px;font-weight:600;color:#1E40AF;margin:0 8px 8px 0}
+.qg{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px}
+.qc{background:#F9FAFB;padding:10px;border-radius:8px;text-align:center;font-size:11px}
+.qc b{font-size:18px;display:block;margin-bottom:2px}
+#preview{max-height:400px;overflow:auto}
+</style>
+</head>
+<body>
+<div class="c">
+  <div class="card">
+    <h1>🔬 Dark Pattern Labeling — Researcher Dashboard</h1>
+    <p>Study 4: Within-subjects (5 sequences × L0/L1/L2 per task) | Sangmyung University Graduate School</p>
+  </div>
+  <div class="card">
+    <h2>📊 Participation Status</h2>
+    <div id="stats"></div>
+    <div id="qGrid"></div>
+  </div>
+  <div class="card">
+    <h2>📥 Data Download</h2>
+    <p style="margin-bottom:12px">Download all collected experimental data in CSV (Excel-compatible) or JSON format.</p>
+    <button class="btn b1" onclick="dlTask()">📄 Task-level Results (CSV)</button>
+    <button class="btn b2" onclick="dlPart()">👥 Participant Summary (CSV)</button>
+    <button class="btn b4" onclick="dlJSON()">🗄 Full Raw Data (JSON)</button>
+  </div>
+  <div class="card">
+    <h2>🔍 Data Preview</h2>
+    <div id="preview"><p>No data available.</p></div>
+  </div>
+  <div class="card">
+    <h2>⚙️ Administration</h2>
+    <button class="btn b3" onclick="if(confirm('Delete all experimental data? This cannot be undone.')){localStorage.removeItem('dp_results2');localStorage.removeItem('dp_q2');location.reload();}">🗑 Clear All Data</button>
+    <button class="btn b1" onclick="if(confirm('Reset participation counters only?')){localStorage.removeItem('dp_q2');location.reload();}">🔄 Reset Counters</button>
+  </div>
+</div>
+<script>
+const SEQS=[
+  {id:1,t:[{type:"FA",label:"L0"},{type:"OB",label:"L1"},{type:"SN",label:"L1"},{type:"II",label:"L2"},{type:"SE",label:"L2"}]},
+  {id:2,t:[{type:"OB",label:"L0"},{type:"SN",label:"L1"},{type:"II",label:"L1"},{type:"SE",label:"L2"},{type:"FA",label:"L2"}]},
+  {id:3,t:[{type:"SN",label:"L0"},{type:"II",label:"L1"},{type:"SE",label:"L1"},{type:"FA",label:"L2"},{type:"OB",label:"L2"}]},
+  {id:4,t:[{type:"II",label:"L0"},{type:"SE",label:"L1"},{type:"FA",label:"L1"},{type:"OB",label:"L2"},{type:"SN",label:"L2"}]},
+  {id:5,t:[{type:"SE",label:"L0"},{type:"FA",label:"L1"},{type:"OB",label:"L1"},{type:"SN",label:"L2"},{type:"II",label:"L2"}]}
+];
+function getData(){try{return JSON.parse(localStorage.getItem("dp_results2")||"[]")}catch(e){return[]}}
+function getQ(){try{return JSON.parse(localStorage.getItem("dp_q2")||"{}")}catch(e){return{}}}
+function render(){
+  const data=getData(),q=getQ(),n=data.length;
+  document.getElementById("stats").innerHTML=`<span class="st">Total Participants: ${n}</span>`;
+  let g="";
+  SEQS.forEach(s=>{
+    const c=q["S"+s.id]||0;
+    const desc=s.t.map(t=>t.label+" "+t.type).join(" → ");
+    g+=`<div class="qc"><b style="color:${c>=20?'#DC2626':'#0369A1'}">${c}/20</b>S${s.id}<br><span style="font-size:9px;color:#64748B">${desc}</span></div>`;
+  });
+  document.getElementById("qGrid").innerHTML=`<div class="qg">${g}</div>`;
+  if(!n){document.getElementById("preview").innerHTML="<p>No data collected yet.</p>";return;}
+  let h="<table><tr><th>#</th><th>ID</th><th>Seq</th><th>Task#</th><th>Type</th><th>Label</th><th>Time(s)</th><th>Clicks</th><th>Err</th><th>Goal</th><th>Manip</th><th>Phone</th></tr>";
+  data.forEach((d,idx)=>{
+    (d.tasks||[]).forEach(t=>{
+      h+=`<tr><td>${idx+1}</td><td>${t.participantId||""}</td><td>S${t.sequenceId}</td><td>${t.taskOrder}</td><td>${t.taskType}</td><td>${t.labelLevel}</td><td>${t.taskCompletionTimeSec}</td><td>${t.clickCount}</td><td>${t.errorClickCount}</td><td>${t.goalSuccess}</td><td>${t.manipulationAwareness}</td><td>${d.phone||""}</td></tr>`;
+    });
+  });
+  h+="</table>";
+  document.getElementById("preview").innerHTML=h;
+}
+function dl(content,name,type){const b=new Blob([content],{type});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=name;a.click();}
+function dlTask(){
+  const data=getData();if(!data.length){alert("No data available.");return;}
+  const h=["participantId","sequenceId","taskOrder","taskType","taskTypeName","labelLevel","taskCompletionTimeSec","clickCount","errorClickCount","goalSuccess","labelClick","decision","manipulationAwareness","timestamp","fairness","transparency","trust","age","gender","occupation","education","commerceYears","commerceFreq","phone"];
+  let csv="\uFEFF"+h.join(",")+"\n";
+  data.forEach(d=>{
+    const dm=d.demographics||{},ps=d.postSurvey||{};
+    (d.tasks||[]).forEach(t=>{
+      csv+=h.map(k=>{
+        if(["fairness","transparency","trust"].includes(k))return ps[k]||"";
+        if(["age","gender","occupation","education","commerceYears","commerceFreq"].includes(k))return dm[k]||"";
+        if(k==="phone")return d.phone||"";
+        return t[k]!=null?t[k]:"";
+      }).join(",")+"\n";
+    });
+  });
+  dl(csv,"dp_task_results_"+new Date().toISOString().slice(0,10)+".csv","text/csv;charset=utf-8;");
+}
+function dlPart(){
+  const data=getData();if(!data.length){alert("No data available.");return;}
+  const h=["participantId","sequenceId","completedAt","age","gender","occupation","education","commerceYears","commerceFreq","fairness","transparency","trust","phone"];
+  let csv="\uFEFF"+h.join(",")+"\n";
+  data.forEach(d=>{
+    const dm=d.demographics||{},ps=d.postSurvey||{};
+    csv+=h.map(k=>{
+      if(["age","gender","occupation","education","commerceYears","commerceFreq"].includes(k))return dm[k]||"";
+      if(["fairness","transparency","trust"].includes(k))return ps[k]||"";
+      return d[k]!=null?d[k]:"";
+    }).join(",")+"\n";
+  });
+  dl(csv,"dp_participants_"+new Date().toISOString().slice(0,10)+".csv","text/csv;charset=utf-8;");
+}
+function dlJSON(){
+  const data=getData();if(!data.length){alert("No data available.");return;}
+  dl(JSON.stringify(data,null,2),"dp_full_"+new Date().toISOString().slice(0,10)+".json","application/json");
+}
+render();
+</script>
+</body>
+</html>

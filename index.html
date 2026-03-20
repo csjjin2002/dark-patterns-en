@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Dark Pattern Labeling Effects on User Perception — Mobile Commerce App Experiment</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:#F0F2F5;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;min-height:100vh}
+button,input,select{font-family:inherit;outline:none}
+::-webkit-scrollbar{width:0;background:transparent}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+// ====== HELPER: hexToRgba ======
+function hexToRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+}
+
+// ====== EXPERIMENT CONFIG ======
+const TN={
+  FA:{ko:"Forced Action",      en:"Forced Action"},
+  OB:{ko:"Obstruction",        en:"Obstruction"},
+  SN:{ko:"Sneaking",           en:"Sneaking"},
+  II:{ko:"Interface Interference", en:"Interface Interference"},
+  SE:{ko:"Social Engineering", en:"Social Engineering"}
+};
+const LN={L0:"No Label",L1:"Passive Label",L2:"Interactive Label"};
+const SEQUENCES = [
+  { id:1, tasks:[{type:"FA",label:"L0"},{type:"OB",label:"L1"},{type:"SN",label:"L1"},{type:"II",label:"L2"},{type:"SE",label:"L2"}] },
+  { id:2, tasks:[{type:"OB",label:"L0"},{type:"SN",label:"L1"},{type:"II",label:"L1"},{type:"SE",label:"L2"},{type:"FA",label:"L2"}] },
+  { id:3, tasks:[{type:"SN",label:"L0"},{type:"II",label:"L1"},{type:"SE",label:"L1"},{type:"FA",label:"L2"},{type:"OB",label:"L2"}] },
+  { id:4, tasks:[{type:"II",label:"L0"},{type:"SE",label:"L1"},{type:"FA",label:"L1"},{type:"OB",label:"L2"},{type:"SN",label:"L2"}] },
+  { id:5, tasks:[{type:"SE",label:"L0"},{type:"FA",label:"L1"},{type:"OB",label:"L1"},{type:"SN",label:"L2"},{type:"II",label:"L2"}] },
+];
+const MAX_PER_SEQ = 20;
+const MQ="I felt this interface was trying to manipulate my decision.";
+const POST_ITEMS=[
+  {id:"fairness",   text:"I felt this interface was fair."},
+  {id:"transparency",text:"I felt this interface provided information transparently."},
+  {id:"trust",      text:"I felt I could trust this service."}
+];
+
+// ====== QUOTA ======
+function getQuotas(){try{return JSON.parse(localStorage.getItem("dp_q2")||"{}");}catch(e){return{};}}
+function saveQuotas(q){try{localStorage.setItem("dp_q2",JSON.stringify(q));}catch(e){}}
+function getSeqCount(q,sid){return q["S"+sid]||0;}
+function incSeq(sid){const q=getQuotas();q["S"+sid]=(q["S"+sid]||0)+1;saveQuotas(q);return q;}
+function assignSequence(){
+  const q=getQuotas();let best=[];let minC=Infinity;
+  SEQUENCES.forEach(s=>{const c=getSeqCount(q,s.id);if(c<MAX_PER_SEQ&&c<minC){minC=c;best=[s];}else if(c===minC&&c<MAX_PER_SEQ){best.push(s);}});
+  if(!best.length)best=[...SEQUENCES];
+  return best[Math.floor(Math.random()*best.length)];
+}
+
+// ====== DATA STORAGE — Google Sheets ======
+const SHEETS_URL = "https://script.google.com/macros/s/AKfycbwTcXYPzb-s_SJa6d22olhk2g1aWIUBZhBhwVrYlRU4W3qDu6yVJzcC0W-XPbEp2k-f/exec";
+async function saveResult(payload){
+  try{const d=JSON.parse(localStorage.getItem("dp_results2")||"[]");d.push(payload);localStorage.setItem("dp_results2",JSON.stringify(d));}catch(e){}
+  try{
+    const res = await fetch(SHEETS_URL, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: {"Content-Type": "text/plain;charset=utf-8"},
+    });
+    console.log("Sent to Sheets:", payload.participantId);
+  }catch(e){
+    try{
+      const encoded = encodeURIComponent(JSON.stringify(payload));
+      const img = new Image();
+      img.src = SHEETS_URL + "?data=" + encoded;
+    }catch(e2){}
+    console.error("Sheets error, used fallback:", e);
+  }
+}
+
+// ====== FIXED PHONE FRAME ======
+const PHONE_W = 390;
+const PHONE_H = 760;
+function Phone({children,step,total,showBar=true}){
+  return React.createElement("div",{style:{
+    width:PHONE_W, maxWidth:"100%", minHeight:PHONE_H,
+    background:"#fff", borderRadius:40,
+    boxShadow:"0 4px 30px rgba(0,0,0,0.12)",
+    overflow:"hidden", position:"relative",
+    border:"6px solid #222", margin:"0 auto",
+    display:"flex", flexDirection:"column"
+  }},
+    React.createElement("div",{style:{background:"#000",color:"#fff",padding:"6px 24px",display:"flex",justifyContent:"space-between",fontSize:12,fontWeight:600,flexShrink:0}},
+      React.createElement("span",null,"9:41"),React.createElement("span",null,"📶 🔋")),
+    showBar && React.createElement("div",{style:{height:3,background:"#E5E5E5",flexShrink:0}},
+      React.createElement("div",{style:{height:"100%",width:`${(step/total)*100}%`,background:"#3B82F6",transition:"width 0.4s"}})),
+    React.createElement("div",{style:{flex:1,display:"flex",flexDirection:"column",overflowY:"auto",minHeight:0}},children));
+}
+
+// ====== LIKERT ======
+function Likert({q,v,onChange}){
+  const lb=["Strongly\nDisagree","","","Neutral","","","Strongly\nAgree"];
+  return React.createElement("div",{style:{margin:"16px 0"}},
+    React.createElement("p",{style:{fontSize:13,fontWeight:500,marginBottom:12,lineHeight:1.6,color:"#333"}},q),
+    React.createElement("div",{style:{display:"flex",justifyContent:"space-between"}},[1,2,3,4,5,6,7].map(n=>
+      React.createElement("div",{key:n,style:{display:"flex",flexDirection:"column",alignItems:"center",gap:4}},
+        React.createElement("button",{onClick:()=>onChange(n),style:{width:38,height:38,borderRadius:"50%",border:v===n?"2px solid #3B82F6":"2px solid #D1D5DB",background:v===n?"#3B82F6":"#fff",color:v===n?"#fff":"#9CA3AF",fontWeight:700,fontSize:14,cursor:"pointer"}},n),
+        React.createElement("span",{style:{fontSize:9,color:"#aaa",textAlign:"center",lineHeight:1.1,whiteSpace:"pre-line"}},lb[n-1])))));
+}
+
+const LABEL_ALPHA = 0.7;
+
+// ====== BANNER + TAGS ======
+function Banner({label,type,onD}){
+  if(label==="L0")return null;const n=TN[type];const sc={FA:87,OB:82,SN:91,II:78,SE:85};
+  if(label==="L1")return React.createElement("div",{style:{background:`rgba(245,158,11,${LABEL_ALPHA})`,color:"#fff",padding:"10px 16px",fontSize:12,fontWeight:600,flexShrink:0}},"⚠️ Dark Pattern Detected: "+n.en);
+  return React.createElement("div",{style:{background:`rgba(220,38,38,${LABEL_ALPHA})`,color:"#fff",padding:"10px 16px",fontSize:12,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6,flexShrink:0}},
+    React.createElement("span",null,"🔴 Risk "+sc[type]+"/100 — "+n.en),
+    React.createElement("button",{onClick:onD,style:{background:"rgba(255,255,255,0.2)",border:"1px solid rgba(255,255,255,0.4)",borderRadius:4,color:"#fff",padding:"3px 10px",fontSize:11,cursor:"pointer"}},"Details >"));
+}
+
+function Tags({label,type}){
+  if(label==="L0")return null;
+  const t={
+    FA:[
+      {t:"🔴 Bundled Consent: Price increase + marketing + personal data bundled into one forced agreement",bg:"#FEE2E2",b:"#FCA5A5",c:"#991B1B"},
+      {t:"🟠 No Real Refusal: 'Later' is not a genuine opt-out",bg:"#FFF7ED",b:"#FDBA74",c:"#9A3412"},
+      {t:"⚠️ Sneaking: Actual consequences disclosed only in 9pt fine print",bg:"#FEFCE8",b:"#FDE047",c:"#854D0E"}
+    ],
+    OB:[
+      {t:"⚠️ Social Engineering: Collecting cancellation reasons increases exit friction",bg:"#FEFCE8",b:"#FDE047",c:"#854D0E"},
+      {t:"🔴 Interface Interference: 'Keep Membership' button is far more prominent than 'Cancel'",bg:"#FEE2E2",b:"#FCA5A5",c:"#991B1B"},
+      {t:"🟠 Obstruction: 'Cancel' button is visually buried in the design",bg:"#FFF7ED",b:"#FDBA74",c:"#9A3412"}
+    ],
+    SN:[
+      {t:"🟠 Drip Pricing: Membership fee (₩7,890) hidden in small print",bg:"#FFF7ED",b:"#FDBA74",c:"#9A3412"},
+      {t:"⚠️ Actual Charge: ₩19,800 + ₩7,890 = ₩27,690 (mismatch from displayed price)",bg:"#FEFCE8",b:"#FDE047",c:"#854D0E"}
+    ],
+    II:[
+      {t:"🟠 Optional consent is pre-checked — effectively forced agreement",bg:"#FFF7ED",b:"#FDBA74",c:"#9A3412"},
+      {t:"⚠️ Opt-out button minimized: visually hidden",bg:"#FEFCE8",b:"#FDE047",c:"#854D0E"},
+      {t:"🔴 Auto-payment notice hidden in 9pt fine print",bg:"#FEE2E2",b:"#FCA5A5",c:"#991B1B"}
+    ],
+    SE:[
+      {t:"🔴 Social Proof: Only positive reviews shown — trust manipulation",bg:"#FEE2E2",b:"#FCA5A5",c:"#991B1B"},
+      {t:"🟠 Artificial Urgency: Unverifiable false scarcity",bg:"#FFF7ED",b:"#FDBA74",c:"#9A3412"},
+      {t:"⚠️ Confirmshaming: Opting out framed as a personal loss",bg:"#FEFCE8",b:"#FDE047",c:"#854D0E"}
+    ]
+  };
+  return React.createElement(React.Fragment,null,(t[type]||[]).map((x,i)=>React.createElement("div",{key:i,style:{background:hexToRgba(x.bg,0.7),border:"1px solid "+x.b,borderRadius:6,padding:"8px 10px",fontSize:11,color:x.c,lineHeight:1.5,marginTop:8}},x.t)));
+}
+
+function Popup({type,onClose}){
+  const d={
+    FA:{s:87,i:["Bundled Consent: Price hike + marketing + personal data forced in one click","No Real Refusal: 'Later' is not a genuine opt-out","Sneaking: Actual consequences disclosed only in 9pt fine print"]},
+    OB:{s:82,i:["Social Engineering: Reason collection increases cancellation friction","Interface Interference: 'Keep' button far more prominent than 'Cancel'","Obstruction: Cancel button intentionally buried"]},
+    SN:{s:91,i:["Drip Pricing: Membership fee hidden in small print","Actual Charge: ₩19,800+₩7,890=₩27,690 (mismatch)","Auto-payment trap: Free trial auto-converts to paid"]},
+    II:{s:78,i:["Pre-checked optional consent — effectively forced","Opt-out button minimized and visually hidden","Auto-payment notice in 9pt fine print"]},
+    SE:{s:85,i:["Social Proof: Only positive reviews shown","Artificial Urgency: Unverifiable false scarcity","Confirmshaming: Opting out framed as loss"]}
+  };
+  const x=d[type];
+  return React.createElement("div",{style:{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:24}},
+    React.createElement("div",{style:{background:"#fff",borderRadius:16,padding:24,width:"100%",maxWidth:340}},
+      React.createElement("p",{style:{fontSize:13,fontWeight:700,color:"#DC2626"}},"⚠️ "+TN[type].en+" Risk Score"),
+      React.createElement("p",{style:{fontSize:32,fontWeight:800,color:"#DC2626",margin:"4px 0 16px"}},x.s+"/100"),
+      React.createElement("div",{style:{background:"#FEF2F2",borderRadius:10,padding:14,marginBottom:16}},
+        React.createElement("p",{style:{fontSize:12,fontWeight:600,color:"#991B1B",marginBottom:8}},"Detected Issues:"),
+        x.i.map((t,i)=>React.createElement("p",{key:i,style:{fontSize:12,color:"#555",lineHeight:1.6,marginBottom:6}},"• "+t))),
+      React.createElement("button",{onClick:onClose,style:{background:"#DC2626",color:"#fff",border:"none",borderRadius:8,padding:"14px 0",fontSize:15,fontWeight:700,cursor:"pointer",width:"100%"}},"Acknowledge and Continue")));
+}
+
+// ====== BUTTONS ======
+const bb={background:"#1A3A6B",color:"#fff",border:"none",borderRadius:8,padding:"15px 0",fontSize:16,fontWeight:700,cursor:"pointer",width:"100%",marginTop:8};
+const gb={background:"#F3F4F6",color:"#9CA3AF",border:"none",borderRadius:8,padding:"14px 0",fontSize:14,cursor:"pointer",width:"100%",marginTop:6};
+const ob={background:"rgba(245,158,11,0.7)",color:"#fff",border:"none",borderRadius:8,padding:"15px 0",fontSize:16,fontWeight:700,cursor:"pointer",width:"100%"};
+const rb2={background:"rgba(220,38,38,0.7)",border:"none",borderRadius:8,padding:"15px 0",fontSize:16,fontWeight:700,cursor:"pointer",width:"100%"};
+const gh={background:"transparent",color:"#9CA3AF",border:"none",padding:"12px 0",fontSize:13,cursor:"pointer",width:"100%",textAlign:"center"};
+
+// ====== TASK SCREENS ======
+
+function FAScreen({label,onA,tr}){
+  return React.createElement("div",{style:{flex:1,display:"flex",flexDirection:"column"}},
+    React.createElement(Banner,{label,type:"FA",onD:()=>{tr("label_detail");onA("openDetail");}}),
+    React.createElement("div",{style:{background:"#FFF8E7",padding:"10px 20px",textAlign:"center"}},
+      React.createElement("span",{style:{color:"#D97706",fontSize:13}},"Starting August 10, the Yes! Membership monthly fee will change to ₩7,890")),
+    React.createElement("div",{style:{padding:"20px 24px",flex:1,display:"flex",flexDirection:"column"}},
+      React.createElement("h2",{style:{fontSize:20,fontWeight:700,textAlign:"center",margin:0,color:"#111"}},"Agree to the change and"),
+      React.createElement("h2",{style:{fontSize:20,fontWeight:700,textAlign:"center",margin:"0 0 16px",color:"#111"}},"continue enjoying your membership benefits"),
+      React.createElement("div",{style:{background:"#F9FAFB",borderRadius:12,padding:16,marginBottom:12}},
+        React.createElement("p",{style:{fontSize:14,fontWeight:600,textAlign:"center",marginBottom:10,color:"#333"}},"C-Commerce Shopping Benefits"),
+        React.createElement("div",{style:{display:"flex",flexWrap:"wrap",justifyContent:"center",gap:"8px 16px",fontSize:13,color:"#555"}},
+          ["🚚 Free Shipping","📦 Free Returns","⚡ Fast Delivery","🏷 Member Discount","🛒 Grocery Access","💳 Yes! Member Card"].map(b=>React.createElement("span",{key:b},b)))),
+      React.createElement("div",{style:{background:"#E8F5E9",borderRadius:8,padding:8,textAlign:"center",marginBottom:12,fontSize:13,color:"#2E7D32"}},"You can still cancel after agreeing"),
+      React.createElement("button",{onClick:()=>{tr("agree_cta");onA("next");},style:bb},"Agree and Keep My Benefits >"),
+      React.createElement("button",{onClick:()=>{tr("later_btn");onA("next");},style:gb},"Remind Me Later"),
+      React.createElement("p",{style:{fontSize:9,color:"#C0C0C0",textAlign:"center",marginTop:10,lineHeight:1.5}},"• By agreeing to the fee change, ₩7,890 will be charged starting August 10."),
+      React.createElement(Tags,{label,type:"FA"})));
+}
+
+function OBScreen({label,onA,tr}){
+  const[s,setS]=React.useState(null);
+  const r=["Monthly fee is too expensive","Discounts are insufficient","I shop less frequently","Free/fast shipping not needed","Other"];
+  return React.createElement("div",{style:{flex:1,display:"flex",flexDirection:"column"}},
+    React.createElement(Banner,{label,type:"OB",onD:()=>{tr("label_detail");onA("openDetail");}}),
+    React.createElement("div",{style:{padding:"20px 24px",flex:1,display:"flex",flexDirection:"column"}},
+      React.createElement("h2",{style:{fontSize:17,fontWeight:700,textAlign:"center",marginBottom:4,color:"#111"}},"Yes! Membership Cancellation Request"),
+      React.createElement("p",{style:{fontSize:15,fontWeight:600,textAlign:"center",marginBottom:16,color:"#333"}},"Please tell us why you're cancelling so we can improve"),
+      r.map((x,i)=>React.createElement("button",{key:i,onClick:()=>{setS(i);tr("reason_select");},style:{display:"flex",alignItems:"center",gap:12,background:s===i?"#EFF6FF":"#F9FAFB",border:s===i?"1.5px solid #3B82F6":"1.5px solid #E5E7EB",borderRadius:10,padding:"13px 14px",marginBottom:7,cursor:"pointer",width:"100%",textAlign:"left",fontSize:14,color:"#333"}},
+        React.createElement("span",{style:{width:18,height:18,borderRadius:"50%",border:s===i?"5px solid #3B82F6":"2px solid #D1D5DB",flexShrink:0}}),x)),
+      React.createElement("button",{onClick:()=>{tr("keep_cta");onA("next");},style:{...bb,marginTop:12}},"Keep My Membership"),
+      React.createElement("button",{onClick:()=>{tr("cancel_btn");onA("next");},style:gb},"Proceed with Cancellation"),
+      React.createElement(Tags,{label,type:"OB"})));
+}
+
+function SNScreen({label,onA,tr}){
+  return React.createElement("div",{style:{flex:1,display:"flex",flexDirection:"column"}},
+    React.createElement(Banner,{label,type:"SN",onD:()=>{tr("label_detail");onA("openDetail");}}),
+    React.createElement("div",{style:{padding:"20px 24px",flex:1,display:"flex",flexDirection:"column"}},
+      React.createElement("h2",{style:{fontSize:17,fontWeight:700,textAlign:"center",marginBottom:16,color:"#111"}},"Order Confirmation"),
+      React.createElement("div",{style:{display:"flex",gap:12,padding:14,background:"#F9FAFB",borderRadius:10,marginBottom:16}},
+        React.createElement("div",{style:{width:64,height:64,background:"#E5E7EB",borderRadius:8,flexShrink:0}}),
+        React.createElement("div",null,
+          React.createElement("p",{style:{fontSize:14,fontWeight:600,color:"#111"}},"Dr. G Red Blemish Clear Soothing Cream"),
+          React.createElement("p",{style:{fontSize:12,color:"#9CA3AF"}},"50ml / Qty: 1"),
+          React.createElement("p",{style:{fontSize:16,fontWeight:700,color:"#111",marginTop:4}},"₩19,800"))),
+      React.createElement(Tags,{label,type:"SN"}),
+      React.createElement("div",{style:{borderTop:"1px solid #F3F4F6",paddingTop:16,marginTop:12}},
+        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:14}},React.createElement("span",{style:{color:"#6B7280"}},"Product Price"),React.createElement("span",{style:{fontWeight:600,color:"#111"}},"₩19,800")),
+        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:6,fontSize:14}},React.createElement("span",{style:{color:"#6B7280"}},"Shipping"),React.createElement("span",{style:{fontWeight:600,color:"#3B82F6"}},"Free")),
+        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:10,fontSize:11}},React.createElement("span",{style:{color:"#D1D5DB"}},"Yes! Membership Monthly Fee"),React.createElement("span",{style:{color:"#D1D5DB"}},"₩7,890")),
+        React.createElement("div",{style:{borderTop:"2px solid #111",paddingTop:10,display:"flex",justifyContent:"space-between"}},React.createElement("span",{style:{fontSize:16,fontWeight:700}},"Total Amount Due"),React.createElement("span",{style:{fontSize:18,fontWeight:700,color:"#DC2626"}},"₩27,690"))),
+      React.createElement("div",{style:{flex:1}}),
+      React.createElement("button",{onClick:()=>{tr("pay_cta");onA("next");},style:rb2},"Pay ₩27,690"),
+      React.createElement("button",{onClick:()=>{tr("cancel_pay");onA("next");},style:gh},"Cancel")));
+}
+
+function IIScreen({label,onA,tr}){
+  const[c1,s1]=React.useState(true);const[c2,s2]=React.useState(true);
+  return React.createElement("div",{style:{flex:1,display:"flex",flexDirection:"column"}},
+    React.createElement(Banner,{label,type:"II",onD:()=>{tr("label_detail");onA("openDetail");}}),
+    React.createElement("div",{style:{background:"#1A3A6B",padding:"20px 24px",textAlign:"center"}},
+      React.createElement("h2",{style:{fontSize:22,fontWeight:700,color:"#FFD700",margin:"0 0 6px"}},"Yes! Membership"),
+      React.createElement("p",{style:{fontSize:14,color:"#fff"}},"Free Shipping · Free Returns · Express Delivery")),
+    React.createElement("div",{style:{padding:"20px 24px",flex:1,display:"flex",flexDirection:"column"}},
+      React.createElement("div",{style:{background:"#EFF6FF",borderRadius:8,padding:"10px 16px",textAlign:"center",marginBottom:16,fontSize:14,color:"#1E40AF",fontWeight:600}},"Start 30-day free trial, then ₩7,890/month"),
+      React.createElement("label",{onClick:()=>{s1(!c1);tr("chk_mkt");},style:{display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:"pointer"}},
+        React.createElement("span",{style:{width:22,height:22,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",background:c1?"#3B82F6":"#fff",border:c1?"none":"2px solid #D1D5DB",color:"#fff",fontSize:14,flexShrink:0}},c1?"✓":""),
+        React.createElement("span",{style:{fontSize:13,color:"#6B7280"}},"Agree to receive marketing info & share personal data with 3rd parties (Optional)")),
+      React.createElement("label",{onClick:()=>{s2(!c2);tr("chk_sms");},style:{display:"flex",alignItems:"center",gap:10,marginBottom:10,cursor:"pointer"}},
+        React.createElement("span",{style:{width:22,height:22,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",background:c2?"#3B82F6":"#fff",border:c2?"none":"2px solid #D1D5DB",color:"#fff",fontSize:14,flexShrink:0}},c2?"✓":""),
+        React.createElement("span",{style:{fontSize:13,color:"#6B7280"}},"Agree to receive C-Commerce email/SMS promotional messages (Optional)")),
+      React.createElement("button",{onClick:()=>{tr("freetrial_cta");onA("next");},style:{...ob,marginTop:12}},"Start Free Trial >"),
+      React.createElement("button",{onClick:()=>{tr("later_benefit");onA("next");},style:gh},"Maybe Later"),
+      React.createElement("p",{style:{fontSize:9,color:"#D1D5DB",textAlign:"center",marginTop:4,lineHeight:1.5}},"• After the free trial ends, ₩7,890 will be automatically charged monthly"),
+      React.createElement(Tags,{label,type:"II"})));
+}
+
+function SEScreen({label,onA,tr}){
+  const rv=[
+    {t:"Since discovering C-Commerce Yes! Membership, I can shop from home with next-day delivery. It's incredibly convenient!",d:"2022.08.31"},
+    {t:"Got a great discount with the Yes! Membership and received the item the very next day in perfect condition.",d:"2022.08.21"},
+    {t:"Was unsure about the size, but free exchanges made ordering stress-free.",d:"2022.08.15"}
+  ];
+  return React.createElement("div",{style:{flex:1,display:"flex",flexDirection:"column"}},
+    React.createElement(Banner,{label,type:"SE",onD:()=>{tr("label_detail");onA("openDetail");}}),
+    React.createElement("div",{style:{background:"#1A3A6B",padding:"14px 24px",textAlign:"center"}},
+      React.createElement("h2",{style:{fontSize:22,fontWeight:700,color:"#FFD700",margin:"0 0 4px"}},"Yes! Membership"),
+      React.createElement("p",{style:{fontSize:13,color:"rgba(255,255,255,0.9)"}},"Real reviews from Yes! Membership members")),
+    React.createElement("div",{style:{padding:"14px 24px",flex:1,display:"flex",flexDirection:"column"}},
+      rv.map((r,i)=>React.createElement("div",{key:i,style:{marginBottom:10,paddingBottom:10,borderBottom:"1px solid #F3F4F6"}},
+        React.createElement("p",{style:{fontSize:13,color:"#333",lineHeight:1.5}},r.t),
+        React.createElement("div",{style:{display:"flex",gap:8,marginTop:4}},React.createElement("span",{style:{color:"#F59E0B",fontSize:11}},"★★★★★"),React.createElement("span",{style:{fontSize:11,color:"#D1D5DB"}},r.d)))),
+      React.createElement(Tags,{label,type:"SE"}),
+      React.createElement("div",{style:{background:"#FFF8E7",borderRadius:12,padding:14,textAlign:"center",marginTop:8,marginBottom:12}},
+        React.createElement("p",{style:{fontSize:13,color:"#D97706",fontWeight:600}},"⏰ Today Only! Time left to claim first-month free:"),
+        React.createElement("p",{style:{fontSize:26,fontWeight:700,color:"#DC2626",margin:"4px 0"}},"00:47:33"),
+        React.createElement("p",{style:{fontSize:12,color:"#D97706"}},"847 people are currently viewing this offer")),
+      React.createElement("button",{onClick:()=>{tr("subscribe_cta");onA("next");},style:ob},"Pay and Get Started >"),
+      React.createElement("p",{style:{fontSize:10,color:"#D1D5DB",textAlign:"center",marginTop:4}},"By signing up, you agree to a monthly charge of ₩7,890."),
+      React.createElement("button",{onClick:()=>{tr("later_se");onA("next");},style:gh},"Maybe Later")));
+}
+
+function Decision({type,onD,tr}){
+  const c={
+    FA:{t:"Final Confirmation: Fee Change",d:"Please make your final decision regarding the Yes! Membership monthly fee change to ₩7,890.",o:[{l:"Agree and Keep My Benefits >",v:"agree",g:false},{l:"Remind Me Later",v:"refuse",g:true}]},
+    OB:{t:"Final Confirmation: Cancellation",d:"If you complete the cancellation, your membership and all associated benefits will end.",o:[{l:"Keep My Membership",v:"keep",g:false},{l:"Proceed with Cancellation",v:"cancel",g:true}]},
+    SN:{t:"Final Confirmation: Payment",d:"Please review your order details and confirm the payment.",o:[{l:"Pay ₩27,690",v:"pay",g:false},{l:"Cancel",v:"cancel_pay",g:true}]},
+    II:{t:"Free Trial Sign-Up",d:"Start your free trial now and enjoy Yes! Membership benefits immediately.",o:[{l:"Start Free Trial >",v:"start",g:false},{l:"Maybe Later",v:"skip",g:true}]},
+    SE:{t:"Membership Sign-Up Confirmation",d:"Would you like to confirm and join Yes! Membership now?",o:[{l:"Pay and Get Started >",v:"sub",g:false},{l:"Maybe Later",v:"skip_sub",g:true}]}
+  };
+  const x=c[type];
+  return React.createElement("div",{style:{padding:24,flex:1,display:"flex",flexDirection:"column"}},
+    React.createElement("div",{style:{background:"#E0E7FF",borderRadius:8,padding:"8px 14px",marginBottom:16,textAlign:"center"}},
+      React.createElement("span",{style:{color:"#4338CA",fontSize:13,fontWeight:600}},"What is your decision?")),
+    React.createElement("h2",{style:{fontSize:17,fontWeight:700,marginBottom:8,color:"#111"}},x.t),
+    React.createElement("p",{style:{fontSize:13,color:"#6B7280",marginBottom:20,lineHeight:1.5}},x.d),
+    x.o.map((o,i)=>React.createElement("button",{key:i,onClick:()=>{tr("dec_"+o.v);onD(o.v,o.g);},style:i===0?{...bb,marginTop:4}:{background:"#DC2626",color:"#fff",border:"none",borderRadius:8,padding:"15px 0",fontSize:16,fontWeight:700,cursor:"pointer",width:"100%",marginTop:6}},o.l)));
+}
+
+// ====== MAIN APP ======
+function App(){
+  const[ph,setPh]=React.useState("intro");
+  const[curSeq,setCurSeq]=React.useState(null);
+  const[ti,setTI]=React.useState(0);
+  const[tp,setTP]=React.useState("exposure");
+  const[pop,setPop]=React.useState(false);
+  const[dm,setDM]=React.useState({age:"",gender:"",occupation:"",education:"",commerceYears:"",commerceFreq:""});
+  const[ms,setMS]=React.useState({});
+  const[ps,setPS]=React.useState({});
+  const[taskData,setTaskData]=React.useState([]);
+  const[pid]=React.useState(()=>"P"+Date.now().toString(36).toUpperCase());
+  const[phone,setPhone]=React.useState("");
+  const[quotas,setQuotas]=React.useState(getQuotas());
+  const[sending,setSending]=React.useState(false);
+  const tsRef=React.useRef(null),clRef=React.useRef([]),ecRef=React.useRef(0),lcRef=React.useRef(false),ldRef=React.useRef({v:"",g:false});
+  const curTask = curSeq ? curSeq.tasks[ti] : null;
+  const curType = curTask ? curTask.type : null;
+  const curLabel = curTask ? curTask.label : null;
+  const step = ph==="intro"?0:ph==="consent"?1:ph==="demographics"?2:ph==="instruction"?3:ph==="task"?4+ti:ph==="postSurvey"?9:10;
+  const tr=React.useCallback(t=>{clRef.current.push({type:t,ts:Date.now()});if(t==="label_detail")lcRef.current=true;if(["agree_cta","keep_cta","pay_cta","freetrial_cta","subscribe_cta"].includes(t))ecRef.current++;},[]);
+  const startT=React.useCallback(()=>{tsRef.current=Date.now();clRef.current=[];ecRef.current=0;lcRef.current=false;},[]);
+  const saveT=React.useCallback(()=>{
+    const time=((Date.now()-tsRef.current)/1000).toFixed(2);
+    const task=curSeq.tasks[ti];
+    setTaskData(p=>[...p,{
+      participantId:pid,sequenceId:curSeq.id,taskOrder:ti+1,
+      taskType:task.type,taskTypeName:TN[task.type].en,labelLevel:task.label,
+      taskCompletionTimeSec:parseFloat(time),clickCount:clRef.current.length,
+      errorClickCount:ecRef.current,goalSuccess:ldRef.current.g?1:0,
+      labelClick:lcRef.current?1:0,decision:ldRef.current.v,
+      manipulationAwareness:ms[task.type]||"",timestamp:new Date().toISOString()
+    }]);
+  },[pid,curSeq,ti,ms]);
+  const doAssign=()=>{const s=assignSequence();setCurSeq(s);const newQ=incSeq(s.id);setQuotas(newQ);};
+  const nextTask=()=>{if(ti<4){setTI(p=>p+1);setTP("exposure");setPop(false);startT();}else setPh("postSurvey");};
+  const hA=a=>{if(a==="openDetail"){setPop(true);return;}setTP("decision");};
+  const hD=(v,g)=>{ldRef.current={v,g};setTP("survey");};
+  const hM=v=>{setMS(p=>({...p,[curType]:v}));};
+  const submitSurvey=()=>{saveT();nextTask();};
+  const finishExperiment=async()=>{
+    setSending(true);
+    const payload={participantId:pid,sequenceId:curSeq.id,demographics:dm,postSurvey:ps,phone,tasks:taskData,completedAt:new Date().toISOString()};
+    await saveResult(payload);
+    setSending(false);
+    setPh("intro");setCurSeq(null);setTI(0);setTP("exposure");setPop(false);
+    setDM({age:"",gender:"",occupation:"",education:"",commerceYears:"",commerceFreq:""});
+    setMS({});setPS({});setTaskData([]);setPhone("");setQuotas(getQuotas());
+  };
+  const SC={FA:FAScreen,OB:OBScreen,SN:SNScreen,II:IIScreen,SE:SEScreen};
+
+  return React.createElement("div",null,
+    React.createElement(Phone,{step,total:10,showBar:!["intro","finish"].includes(ph)},
+
+    // === INTRO ===
+    ph==="intro"&&React.createElement("div",{style:{padding:"24px 20px",flex:1,display:"flex",flexDirection:"column"}},
+      React.createElement("div",{style:{textAlign:"center",marginBottom:18}},
+        React.createElement("div",{style:{width:64,height:64,borderRadius:16,background:"linear-gradient(135deg,#3B82F6,#6366F1)",margin:"0 auto 12px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}},"🔍"),
+        React.createElement("h1",{style:{fontSize:20,fontWeight:800,color:"#111",lineHeight:1.3}},"Dark Pattern Labeling Effects",React.createElement("br"),"on User Perception"),
+        React.createElement("p",{style:{fontSize:11,color:"#9CA3AF",marginTop:4}},"Mobile e-commerce app dark pattern labeling and its effects on differences in user perception")),
+      React.createElement("div",{style:{background:"#F9FAFB",borderRadius:10,padding:14,marginBottom:12,fontSize:12,color:"#555",lineHeight:1.7}},
+        React.createElement("p",{style:{marginBottom:6}},"This study evaluates differences in user perception based on dark pattern label types in mobile commerce apps."),
+        React.createElement("p",null,"The experiment takes approximately 15–20 minutes. You will view 5 mobile screens and respond to brief surveys.")),
+      React.createElement("div",{style:{background:"#F0F9FF",borderRadius:10,padding:12,marginBottom:12,border:"1px solid #BAE6FD"}},
+        React.createElement("p",{style:{fontSize:11,fontWeight:700,color:"#0369A1",marginBottom:8}},"📊 Participation Status (Random Assignment)"),
+        SEQUENCES.map(s=>{
+          const c=getSeqCount(quotas,s.id);
+          return React.createElement("div",{key:s.id,style:{padding:"6px 0",borderBottom:s.id<5?"1px solid #E0F2FE":"none",fontSize:10,color:"#334155",lineHeight:1.5}},
+            React.createElement("span",{style:{fontWeight:700,color:c>=MAX_PER_SEQ?"#DC2626":"#0369A1",marginRight:6}},c+"/"+MAX_PER_SEQ),
+            "S"+s.id+"(",s.tasks.map(t=>t.label+" "+t.type).join(" → "),")");
+        })),
+      React.createElement("p",{style:{fontSize:10,color:"#9CA3AF",textAlign:"center",marginBottom:10}},"Sangmyung University Graduate School of Business (MIS)",React.createElement("br"),"Researcher: Cho Sungjin | Advisor: Prof. Yoo Jinho"),
+      React.createElement("div",{style:{flex:1}}),
+      React.createElement("button",{onClick:()=>setPh("consent"),style:{...bb,background:"linear-gradient(135deg,#3B82F6,#6366F1)"}},"Start Experiment")),
+
+    // === CONSENT ===
+    ph==="consent"&&React.createElement("div",{style:{padding:24,flex:1,display:"flex",flexDirection:"column"}},
+      React.createElement("h2",{style:{fontSize:18,fontWeight:700,marginBottom:14,color:"#111"}},"📋 Research Participation Consent Form"),
+      React.createElement("div",{style:{background:"#F9FAFB",borderRadius:10,padding:16,fontSize:12,color:"#555",lineHeight:1.7,flex:1,overflowY:"auto"}},
+        [
+          {t:"1. Research Purpose",d:"This study evaluates differences in user perception based on dark pattern label types in mobile commerce apps."},
+          {t:"2. Procedure",d:"You will examine 5 mobile screens and make decisions about each, then answer a brief survey. The total estimated time is approximately 15–20 minutes."},
+          {t:"3. Data Collection",d:"Screen interaction time, click counts, decision outcomes, and survey responses will be collected. All data is anonymized and used for research purposes only."},
+          {t:"4. Participant Rights",d:"Participation is voluntary and you may withdraw at any time."},
+          {t:"5. Privacy Protection",d:"Collected data will be retained for 3 years after the study is complete, then securely destroyed."}
+        ].map((s,i)=>React.createElement("div",{key:i,style:{marginBottom:12}},React.createElement("p",{style:{fontWeight:600,color:"#333",marginBottom:4}},s.t),React.createElement("p",null,s.d)))),
+      React.createElement("button",{onClick:()=>{doAssign();setPh("demographics");},style:{...bb,marginTop:16}},"I Agree — Continue")),
+
+    // === DEMOGRAPHICS ===
+    ph==="demographics"&&React.createElement("div",{style:{padding:24,flex:1,display:"flex",flexDirection:"column",overflowY:"auto"}},
+      React.createElement("h2",{style:{fontSize:18,fontWeight:700,marginBottom:14,color:"#111"}},"👤 Basic Information"),
+      [
+        {k:"age",l:"Age",o:["20s","30s","40s","50s","60+"]},
+        {k:"gender",l:"Gender",o:["Male","Female","Other","Prefer not to say"]},
+        {k:"occupation",l:"Occupation",o:["Student","Employed","Self-employed","Professional","Homemaker","Unemployed/Other"]},
+        {k:"education",l:"Highest Education",o:["High school diploma","Bachelor's (current or completed)","Graduate degree (current or completed)"]},
+        {k:"commerceYears",l:"Years using mobile commerce apps",o:["Less than 1 year","1–3 years","3–5 years","5+ years"]},
+        {k:"commerceFreq",l:"Mobile commerce app usage frequency",o:["Rarely","1–2 times/week","3–5 times/week","Daily"]}
+      ].map(({k,l,o})=>React.createElement("div",{key:k,style:{marginBottom:12}},
+        React.createElement("label",{style:{fontSize:13,fontWeight:600,color:"#333",display:"block",marginBottom:4}},l),
+        React.createElement("select",{value:dm[k],onChange:e=>setDM(p=>({...p,[k]:e.target.value})),style:{width:"100%",padding:"11px 12px",borderRadius:8,border:"1.5px solid #E5E7EB",fontSize:14,background:"#fff",color:dm[k]?"#111":"#9CA3AF"}},
+          React.createElement("option",{value:""},"Please select"),o.map(v=>React.createElement("option",{key:v,value:v},v))))),
+      React.createElement("div",{style:{flex:1,minHeight:12}}),
+      React.createElement("button",{onClick:()=>setPh("instruction"),disabled:!dm.age||!dm.gender,style:{...bb,opacity:(!dm.age||!dm.gender)?0.4:1}},"Next")),
+
+    // === INSTRUCTION ===
+    ph==="instruction"&&React.createElement("div",{style:{padding:24,flex:1,display:"flex",flexDirection:"column",justifyContent:"center"}},
+      React.createElement("div",{style:{background:"#EFF6FF",borderRadius:14,padding:22,marginBottom:16}},
+        React.createElement("h2",{style:{fontSize:16,fontWeight:700,marginBottom:14,color:"#1E40AF"}},"📱 Experiment Instructions"),
+        [
+          "1. You will be shown 5 mobile screens in sequence.",
+          "2. After reviewing each screen, please make a final decision.",
+          "3. After your decision, answer a brief single-item survey.",
+          "4. After all 5 tasks, complete a short post-survey (3 items).",
+          "💡 There are no right or wrong answers. Please respond naturally as you normally would."
+        ].map((t,i)=>React.createElement("p",{key:i,style:{fontSize:13,color:"#444",lineHeight:1.7,marginBottom:8}},t))),
+      React.createElement("div",{style:{background:"#FEFCE8",borderRadius:10,padding:12,fontSize:12,color:"#854D0E"}},"⏱ Your interaction time and clicks on each screen are automatically recorded."),
+      React.createElement("div",{style:{flex:1}}),
+      React.createElement("button",{onClick:()=>{setPh("task");startT();},style:{...bb,background:"linear-gradient(135deg,#3B82F6,#6366F1)"}},"Start Tasks →")),
+
+    // === TASK ===
+    ph==="task"&&curType&&React.createElement("div",{style:{flex:1,display:"flex",flexDirection:"column",position:"relative"}},
+      React.createElement("div",{style:{background:"#F9FAFB",padding:"8px 16px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid #F3F4F6",flexShrink:0}},
+        React.createElement("span",{style:{fontSize:12,color:"#9CA3AF"}},"Task "+(ti+1)+"/5"),
+        React.createElement("span",{style:{background:"#EFF6FF",color:"#3B82F6",padding:"2px 10px",borderRadius:20,fontWeight:600,fontSize:11}},TN[curType].en)),
+      tp==="exposure"&&React.createElement(SC[curType],{label:curLabel,onA:hA,tr}),
+      tp==="decision"&&React.createElement(Decision,{type:curType,onD:hD,tr}),
+      tp==="survey"&&React.createElement("div",{style:{padding:24,flex:1,display:"flex",flexDirection:"column"}},
+        React.createElement("div",{style:{background:"#F0FDF4",borderRadius:10,padding:12,textAlign:"center",marginBottom:16}},
+          React.createElement("span",{style:{fontSize:18}},"✅"),
+          React.createElement("p",{style:{fontSize:14,fontWeight:600,color:"#166534",marginTop:2}},"Task "+(ti+1)+" Complete")),
+        React.createElement(Likert,{q:MQ,v:ms[curType],onChange:hM}),
+        React.createElement("div",{style:{flex:1}}),
+        React.createElement("button",{onClick:submitSurvey,disabled:!ms[curType],style:{...bb,opacity:ms[curType]?1:0.4}},ti<4?"Next Task →":"Go to Final Survey →")),
+      pop&&React.createElement(Popup,{type:curType,onClose:()=>setPop(false)})),
+
+    // === POST SURVEY ===
+    ph==="postSurvey"&&React.createElement("div",{style:{padding:24,flex:1,display:"flex",flexDirection:"column"}},
+      React.createElement("h2",{style:{fontSize:18,fontWeight:700,marginBottom:4,color:"#111"}},"📝 Overall Experience Survey"),
+      React.createElement("p",{style:{fontSize:12,color:"#9CA3AF",marginBottom:16}},"Please rate your overall experience across the experiment."),
+      POST_ITEMS.map(item=>React.createElement(Likert,{key:item.id,q:item.text,v:ps[item.id],onChange:v=>setPS(p=>({...p,[item.id]:v}))})),
+      React.createElement("div",{style:{flex:1}}),
+      React.createElement("button",{onClick:()=>setPh("finish"),disabled:!ps.fairness||!ps.transparency||!ps.trust,style:{...bb,opacity:(ps.fairness&&ps.transparency&&ps.trust)?1:0.4}},"Submit")),
+
+    // === FINISH ===
+    ph==="finish"&&React.createElement("div",{style:{padding:24,flex:1,display:"flex",flexDirection:"column"}},
+      React.createElement("div",{style:{textAlign:"center",marginBottom:16}},
+        React.createElement("div",{style:{width:56,height:56,borderRadius:"50%",background:"linear-gradient(135deg,#10B981,#34D399)",margin:"0 auto 10px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}},"🎉"),
+        React.createElement("h2",{style:{fontSize:18,fontWeight:700,color:"#111"}},"Experiment Complete!"),
+        React.createElement("p",{style:{fontSize:13,color:"#6B7280",marginTop:4}},"Thank you for your participation.")),
+      React.createElement("div",{style:{background:"#FEFCE8",borderRadius:12,padding:14,marginBottom:12,fontSize:11,color:"#854D0E",lineHeight:1.7}},
+        React.createElement("p",{style:{fontWeight:600,marginBottom:6}},"📢 Debriefing"),
+        React.createElement("p",null,"This study examined how dark pattern labels in mobile commerce apps affect user perception. The screens shown during the experiment were prototypes simulating real services. No actual payment or account registration occurred.")),
+      React.createElement("div",{style:{background:"#F0FDF4",borderRadius:12,padding:16,marginBottom:12,border:"1px solid #BBF7D0"}},
+        React.createElement("p",{style:{fontSize:12,fontWeight:600,color:"#166534",marginBottom:8}},"🎁 Incentive Information"),
+        React.createElement("p",{style:{fontSize:11,color:"#555",lineHeight:1.7,marginBottom:12}},"All participants are eligible for a randomly drawn incentive gift. We collect your phone number solely for this purpose. It will be deleted immediately after the draw and will not be shared with any third parties."),
+        React.createElement("label",{style:{fontSize:12,fontWeight:600,color:"#333",display:"block",marginBottom:6}},"Phone Number"),
+        React.createElement("input",{type:"tel",value:phone,onChange:e=>setPhone(e.target.value),placeholder:"010-0000-0000",style:{width:"100%",padding:"12px 14px",borderRadius:8,border:"1.5px solid #D1D5DB",fontSize:15,background:"#fff",textAlign:"center",letterSpacing:1}})),
+      React.createElement("div",{style:{flex:1}}),
+      React.createElement("button",{onClick:finishExperiment,disabled:sending,style:{...bb,background:sending?"#9CA3AF":"linear-gradient(135deg,#DC2626,#B91C1C)"}},sending?"Saving...":"Finish Experiment")),
+
+    React.createElement("p",{style:{marginTop:10,fontSize:9,color:"#9CA3AF",textAlign:"center"}},"Sangmyung University Graduate School | Study 4: Dark Pattern Labeling Usability Test")));
+}
+
+const rootEl = document.getElementById("root");
+if (ReactDOM.createRoot) {
+  ReactDOM.createRoot(rootEl).render(React.createElement(App));
+} else {
+  ReactDOM.render(React.createElement(App), rootEl);
+}
+</script>
+</body>
+</html>
