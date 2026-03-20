@@ -8,12 +8,10 @@ Researcher: Cho Sungjin | Advisor: Prof. Yoo Jinho
 ## Links
 
 - Participant Experiment: https://csjjin2002.github.io/dark-patterns-en/
-- Researcher Dashboard: https://csjjin2002.github.io/dark-patterns-en/researcher.html
 
 ## About
 
 This is the English version of the dark pattern labeling usability experiment.
-Original Korean version: https://github.com/csjjin2002/dark-patterns
 
 ## Experiment Design
 
